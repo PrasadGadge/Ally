@@ -1,0 +1,1679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vivie — Neural Voice Assistant</title>
+  <meta name="description" content="Vivie — minimal sci-fi AI voice assistant interface">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;900&family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/": "https://cdn.jsdelivr.net/npm/three@0.160.0/",
+      "react": "https://esm.sh/react@18.2.0",
+      "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+      "htm": "https://esm.sh/htm@3.1.1"
+    }
+  }
+  </script>
+  <style>
+    /* ── Design tokens ── */
+    :root {
+      --v-bg:          #03070e;
+      --v-bg2:         #060d18;
+      --v-cyan:        #6ee7f0;
+      --v-cyan-soft:   #4dcbda;
+      --v-cyan-dim:    rgba(110, 231, 240, 0.5);
+      --v-cyan-faint:  rgba(110, 231, 240, 0.06);
+      --v-label:       #4a6a80;
+      --v-label-hi:    #6a90aa;
+      --v-muted:       #1e2f3c;
+      --v-amber:       #f4bc6c;
+      --v-amber-soft:  rgba(244, 188, 108, 0.45);
+      --v-green:       #5de8b4;
+      --v-red:         #cf7878;
+      --v-glow:        rgba(110, 231, 240, 0.5);
+      --v-glow-deep:   rgba(110, 231, 240, 0.12);
+      --v-border:      rgba(110, 231, 240, 0.07);
+      --v-border-hi:   rgba(110, 231, 240, 0.15);
+      --f-display:     "Orbitron", "Share Tech Mono", monospace;
+      --f-body:        "Rajdhani", "Share Tech Mono", sans-serif;
+      --f-mono:        "Share Tech Mono", ui-monospace, monospace;
+    }
+
+    /* ── Reset ── */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body, #root { height: 100%; }
+    body {
+      font-family: var(--f-body);
+      background: var(--v-bg);
+      color: var(--v-cyan-soft);
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    /* ── Root ── */
+    .vivie-root { position: fixed; inset: 0; background: var(--v-bg); }
+    .canvas-container { position: fixed; inset: 0; z-index: 0; }
+
+    /* ── Background layers ── */
+    .bg-nebula { display: none; }
+
+    /* Vignette — subtle darkening at very edges only */
+    .vignette {
+      position: fixed; inset: 0; z-index: 1; pointer-events: none;
+      background:
+        radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0,0,0,0.38) 88%, rgba(0,0,0,0.72) 100%),
+        linear-gradient(180deg, rgba(0,0,0,0.12) 0%, transparent 12%, transparent 88%, rgba(0,0,0,0.12) 100%);
+    }
+
+    /* Film grain — very subtle */
+    .grain {
+      position: fixed; inset: 0; z-index: 2; pointer-events: none; opacity: 0.022;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence baseFrequency='0.75' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    }
+
+    /* Scanlines — barely visible */
+    .scanlines {
+      position: fixed; inset: 0; z-index: 3; pointer-events: none;
+      background: repeating-linear-gradient(
+        0deg, transparent, transparent 3px,
+        rgba(255,255,255,0.007) 3px, rgba(255,255,255,0.007) 4px
+      );
+    }
+    .scanlines::before, .scanlines::after { display: none; }
+
+    /* ── HUD corners — larger & crisper ── */
+    .hud-corner { position: fixed; width: 22px; height: 22px; z-index: 4; pointer-events: none; }
+    .hud-corner::before, .hud-corner::after {
+      content: ""; position: absolute;
+      background: var(--v-cyan); opacity: 0.28;
+    }
+    .hud-tl { top: 18px; left: 18px; }
+    .hud-tl::before { top: 0; left: 0; width: 18px; height: 1px; }
+    .hud-tl::after  { top: 0; left: 0; width: 1px; height: 18px; }
+    .hud-tr { top: 18px; right: 18px; }
+    .hud-tr::before { top: 0; right: 0; width: 18px; height: 1px; }
+    .hud-tr::after  { top: 0; right: 0; width: 1px; height: 18px; }
+    .hud-bl { bottom: 18px; left: 18px; }
+    .hud-bl::before { bottom: 0; left: 0; width: 18px; height: 1px; }
+    .hud-bl::after  { bottom: 0; left: 0; width: 1px; height: 18px; }
+    .hud-br { bottom: 18px; right: 18px; }
+    .hud-br::before { bottom: 0; right: 0; width: 18px; height: 1px; }
+    .hud-br::after  { bottom: 0; right: 0; width: 1px; height: 18px; }
+
+    /* ── WS status pill ── */
+    .ws-status {
+      position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+      z-index: 10; pointer-events: none;
+      font-family: var(--f-body);
+      font-size: 9px; font-weight: 500; letter-spacing: 6px;
+      color: var(--v-label); opacity: 0.55;
+      text-transform: uppercase;
+      transition: color 0.35s, opacity 0.35s;
+    }
+    .ws-connected    { color: var(--v-cyan-soft); opacity: 0.55; }
+    .ws-disconnected { color: var(--v-red); opacity: 0.85; }
+
+    /* ── Overlay grid ── */
+    .overlay {
+      position: fixed; inset: 0; z-index: 5; pointer-events: none;
+      display: grid;
+      grid-template-columns: minmax(268px, 310px) 1fr minmax(248px, 292px);
+      grid-template-rows: 1fr;
+    }
+
+    /* ── Left panel ── */
+    .left-info {
+      grid-column: 1;
+      padding: 46px 30px 38px 36px;
+      display: flex; flex-direction: column;
+      pointer-events: auto;
+      background: transparent;
+    }
+
+    /* Brand */
+    .brand-group { margin-bottom: 6px; }
+    .brand-tag {
+      font-family: var(--f-display);
+      font-size: 9px; font-weight: 400; letter-spacing: 6px;
+      color: var(--v-cyan-soft); text-transform: uppercase;
+      margin-bottom: 10px; opacity: 0.65; font-style: italic;
+    }
+    .brand-name {
+      font-family: var(--f-display);
+      font-size: 44px; font-weight: 700;
+      letter-spacing: 16px; color: var(--v-cyan);
+      text-shadow:
+        0 0 20px rgba(110, 231, 240, 0.6),
+        0 0 60px rgba(110, 231, 240, 0.20);
+      line-height: 1; margin: 0;
+    }
+    .brand-sub {
+      font-family: var(--f-display);
+      font-size: 8px; font-weight: 400; letter-spacing: 3px;
+      color: var(--v-label-hi); margin-top: 10px; opacity: 0.6;
+      text-transform: uppercase; font-style: italic;
+    }
+    .brand-sep {
+      width: 72px; height: 1px; margin: 24px 0;
+      background: linear-gradient(90deg, var(--v-cyan-soft) 0%, transparent 100%);
+      opacity: 0.35;
+    }
+
+    /* Status row */
+    .core-status-row {
+      display: flex; align-items: center; gap: 11px; margin-bottom: 30px;
+    }
+    .core-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--v-cyan);
+      box-shadow: 0 0 0 2px rgba(110,231,240,0.12), 0 0 12px var(--v-glow);
+      transition: background 0.45s, box-shadow 0.45s;
+      flex-shrink: 0;
+    }
+    .core-idle    { animation: corePulse 2.8s ease-in-out infinite; }
+    .core-thinking {
+      background: var(--v-amber);
+      box-shadow: 0 0 0 2px rgba(244,188,108,0.15), 0 0 12px var(--v-amber-soft);
+      animation: corePulse 0.85s ease-in-out infinite;
+    }
+    .core-speaking {
+      background: var(--v-green);
+      box-shadow: 0 0 0 2px rgba(93,232,180,0.15), 0 0 16px rgba(93,232,180,0.65);
+      animation: corePulse 0.5s ease-in-out infinite;
+    }
+    @keyframes corePulse {
+      0%,100% { opacity: 0.42; transform: scale(0.82); }
+      50%      { opacity: 1;    transform: scale(1.22); }
+    }
+    .core-status-text {
+      font-family: var(--f-display);
+      font-size: 10px; font-weight: 400; letter-spacing: 4px;
+      font-style: italic;
+      color: var(--v-cyan-soft); text-transform: uppercase;
+      text-shadow: 0 0 10px rgba(110,231,240,0.22);
+    }
+
+    /* Metrics */
+    .metrics-stack { display: flex; flex-direction: column; gap: 16px; }
+    .metric        { display: flex; flex-direction: column; gap: 2px; }
+    .metric-label {
+      font-family: var(--f-display);
+      font-size: 8px; font-weight: 400;
+      letter-spacing: 4px; font-style: italic;
+      color: var(--v-cyan-soft); text-transform: uppercase; opacity: 0.65;
+    }
+    .metric-value {
+      font-family: var(--f-display);
+      font-size: 22px; font-weight: 700;
+      color: var(--v-cyan); letter-spacing: 2px;
+      text-shadow: 0 0 12px rgba(110,231,240,0.45);
+      line-height: 1.1;
+    }
+    .metric-value .unit {
+      font-family: var(--f-body);
+      font-size: 11px; color: var(--v-label-hi);
+      margin-left: 3px; letter-spacing: 1px;
+      font-weight: 500; text-shadow: none;
+    }
+    .bar-track {
+      width: 100%; height: 2px;
+      background: rgba(60, 90, 110, 0.18);
+      margin-top: 9px; overflow: hidden;
+      border-radius: 2px;
+    }
+    .bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--v-cyan), rgba(110,231,240,0.12));
+      box-shadow: 0 0 8px rgba(110,231,240,0.35);
+      transition: width 1.1s cubic-bezier(.4,0,.2,1);
+      border-radius: 2px;
+    }
+
+    /* Divider */
+    .sub-sep {
+      width: 36px; height: 1px;
+      background: var(--v-border); margin: 26px 0 18px;
+    }
+
+    /* System log */
+    .sys-log-header {
+      font-family: var(--f-display);
+      font-size: 8px; font-weight: 400; letter-spacing: 4px;
+      font-style: italic;
+      color: var(--v-cyan-soft); text-transform: uppercase;
+      margin-bottom: 10px; opacity: 0.65;
+    }
+    .sys-log { display: flex; flex-direction: column; gap: 5px; }
+    .sys-log-line {
+      font-family: var(--f-mono);
+      font-size: 10px; letter-spacing: 0.4px;
+      color: var(--v-label); opacity: 0.5;
+      line-height: 1.5; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis;
+      transition: opacity 0.45s, color 0.45s;
+    }
+    .sys-log-line.fresh { opacity: 1; color: var(--v-cyan-soft); }
+    .sys-log-line .log-ts {
+      color: var(--v-cyan-soft); opacity: 0.55; margin-right: 8px; font-size: 9px;
+    }
+    .sys-log-line.user  { color: #8ec9e2; opacity: 0.75; }
+    .sys-log-line.vivie { color: var(--v-cyan-soft); opacity: 0.85; }
+    .sys-log-line.ok    { color: var(--v-green); opacity: 0.80; }
+    .sys-log-line.task  { color: var(--v-amber); opacity: 0.75; }
+    .sys-log-line.step  { color: var(--v-cyan-soft); opacity: 0.65; }
+    .sys-log-line.warning { color: var(--v-amber); opacity: 0.80; }
+    .sys-log-line.error { color: var(--v-red); opacity: 0.85; }
+
+    /* Chat Input Panel */
+    .chat-panel {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 500px;
+      max-width: 90vw;
+      background: rgba(6, 13, 24, 0.92);
+      border: 1px solid var(--v-border-hi);
+      border-radius: 8px;
+      padding: 12px;
+      z-index: 15;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    }
+    .chat-input-row {
+      display: flex;
+      gap: 8px;
+    }
+    .chat-input {
+      flex: 1;
+      background: rgba(110, 231, 240, 0.05);
+      border: 1px solid var(--v-border);
+      border-radius: 4px;
+      padding: 10px 12px;
+      color: var(--v-cyan-soft);
+      font-family: var(--f-body);
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .chat-input:focus {
+      border-color: var(--v-cyan);
+      background: rgba(110, 231, 240, 0.08);
+    }
+    .chat-input::placeholder {
+      color: var(--v-label);
+    }
+    .chat-send-btn {
+      padding: 10px 20px;
+      background: var(--v-cyan);
+      color: #0a141a;
+      border: none;
+      border-radius: 4px;
+      font-family: var(--f-display);
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-transform: uppercase;
+    }
+    .chat-send-btn:hover {
+      background: #7cebc4;
+      box-shadow: 0 0 12px rgba(110, 231, 240, 0.4);
+    }
+    .chat-send-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Clock */
+    .clock-block { margin-top: auto; }
+    .clock-time {
+      font-family: var(--f-display);
+      font-size: 32px; font-weight: 700;
+      letter-spacing: 8px; color: var(--v-cyan);
+      text-shadow: 0 0 16px rgba(110,231,240,0.38);
+      line-height: 1; opacity: 0.75;
+    }
+    .clock-date {
+      font-family: var(--f-body);
+      font-size: 10px; font-weight: 500; letter-spacing: 4px;
+      color: var(--v-label); margin-top: 8px; opacity: 0.6;
+      text-transform: uppercase;
+    }
+
+    /* ── Right panel ── */
+    .right-panel {
+      grid-column: 3;
+      padding: 46px 36px 38px 24px;
+      display: flex; flex-direction: column;
+      justify-content: center; gap: 6px;
+      pointer-events: auto;
+      background: transparent;
+    }
+    .panel-section {
+      padding: 16px 0; text-align: right;
+      border-bottom: 1px solid rgba(110,231,240,0.05);
+    }
+    .panel-section:last-child { border-bottom: none; }
+
+    /* Section headers — oblique wide caps like in images */
+    .panel-label {
+      font-family: var(--f-display);
+      font-size: 9px; font-weight: 400;
+      letter-spacing: 5px;
+      color: var(--v-cyan-soft);
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      font-style: italic;
+      opacity: 0.75;
+    }
+
+    /* Main values — bold bright Orbitron */
+    .panel-main-value {
+      font-family: var(--f-display);
+      font-size: 16px; font-weight: 700;
+      color: var(--v-cyan); letter-spacing: 2px;
+      text-shadow: 0 0 12px rgba(110,231,240,0.5);
+      line-height: 1.3;
+    }
+
+    /* Sub values — small faded italic like "Secure Channel", "Responding..." */
+    .panel-sub-value {
+      font-family: var(--f-body);
+      font-size: 10px; font-weight: 400;
+      font-style: italic;
+      color: var(--v-label-hi);
+      letter-spacing: 1.5px; margin-top: 4px;
+      opacity: 0.6;
+    }
+
+    /* LED row — tighter, taller pills matching image */
+    .led-row {
+      display: flex; justify-content: flex-end; gap: 2px; margin-bottom: 10px;
+    }
+    .led-pill {
+      width: 14px; height: 6px; border-radius: 1px;
+      background: var(--v-cyan); opacity: 0.08;
+      transition: opacity 0.08s, box-shadow 0.08s;
+    }
+    .led-pill.lit {
+      opacity: 0.95;
+      box-shadow: 0 0 8px var(--v-glow), 0 0 3px var(--v-cyan);
+      animation: ledFlicker 0.35s ease-in-out infinite alternate;
+    }
+    @keyframes ledFlicker { 0%{opacity:0.6;} 100%{opacity:1;} }
+
+    /* Speaking tag — "• SPEAKING" dot + label */
+    /* Task Progress Panel */
+    .task-panel {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 380px;
+      max-width: 90vw;
+      background: rgba(6, 13, 24, 0.92);
+      border: 1px solid var(--v-border-hi);
+      border-radius: 8px;
+      padding: 16px;
+      z-index: 10;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    }
+    .task-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .task-title {
+      font-family: var(--f-display);
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: var(--v-cyan-soft);
+      text-transform: uppercase;
+    }
+    .task-status {
+      font-family: var(--f-mono);
+      font-size: 9px;
+      padding: 2px 8px;
+      border-radius: 2px;
+      background: var(--v-muted);
+    }
+    .task-status.task-running { color: var(--v-cyan); background: rgba(110, 231, 240, 0.1); }
+    .task-status.task-completed { color: var(--v-green); background: rgba(93, 232, 180, 0.1); }
+    .task-status.task-failed { color: var(--v-red); background: rgba(207, 120, 120, 0.1); }
+    .task-description {
+      font-family: var(--f-body);
+      font-size: 12px;
+      color: var(--v-cyan-soft);
+      margin-bottom: 12px;
+      line-height: 1.4;
+    }
+    .task-progress-bar {
+      height: 4px;
+      background: var(--v-muted);
+      border-radius: 2px;
+      margin-bottom: 8px;
+      overflow: hidden;
+    }
+    .task-progress-fill {
+      height: 100%;
+      background: var(--v-cyan);
+      transition: width 0.3s ease;
+      box-shadow: 0 0 8px var(--v-glow);
+    }
+    .task-stats {
+      font-family: var(--f-mono);
+      font-size: 10px;
+      color: var(--v-label);
+      margin-bottom: 12px;
+    }
+    .task-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+    .task-step {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      background: rgba(110, 231, 240, 0.03);
+      border-radius: 4px;
+      font-size: 11px;
+    }
+    .step-status {
+      font-family: var(--f-mono);
+      font-size: 12px;
+      width: 16px;
+      text-align: center;
+    }
+    .task-step.task-step-running .step-status { color: var(--v-cyan); }
+    .task-step.task-step-completed .step-status { color: var(--v-green); }
+    .task-step.task-step-failed .step-status { color: var(--v-red); }
+    .step-description {
+      flex: 1;
+      color: var(--v-cyan-soft);
+    }
+    .step-error {
+      font-family: var(--f-mono);
+      font-size: 9px;
+      color: var(--v-red);
+    }
+
+    /* Approval Card */
+    .approval-card {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 340px;
+      max-width: 90vw;
+      background: rgba(6, 13, 24, 0.95);
+      border: 1px solid var(--v-border-hi);
+      border-radius: 8px;
+      padding: 16px;
+      z-index: 20;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    }
+    .approval-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .approval-title {
+      font-family: var(--f-display);
+      font-size: 11px;
+      letter-spacing: 2px;
+      color: var(--v-cyan-soft);
+      text-transform: uppercase;
+    }
+    .approval-risk {
+      font-family: var(--f-mono);
+      font-size: 9px;
+      padding: 2px 8px;
+      border-radius: 2px;
+      text-transform: uppercase;
+    }
+    .approval-risk.high { color: var(--v-red); background: rgba(207, 120, 120, 0.15); }
+    .approval-risk.moderate { color: var(--v-amber); background: rgba(244, 188, 108, 0.15); }
+    .approval-risk.safe { color: var(--v-green); background: rgba(93, 232, 180, 0.15); }
+    .approval-description {
+      font-family: var(--f-body);
+      font-size: 13px;
+      color: var(--v-cyan-soft);
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+    .approval-target {
+      font-family: var(--f-mono);
+      font-size: 10px;
+      color: var(--v-label);
+      margin-bottom: 6px;
+    }
+    .approval-args {
+      font-family: var(--f-mono);
+      font-size: 9px;
+      color: var(--v-label);
+      background: rgba(110, 231, 240, 0.05);
+      padding: 8px;
+      border-radius: 4px;
+      margin-bottom: 12px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .approval-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .approval-btn {
+      flex: 1;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 4px;
+      font-family: var(--f-display);
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-transform: uppercase;
+    }
+    .approval-approve {
+      background: var(--v-green);
+      color: #0a141a;
+    }
+    .approval-approve:hover {
+      background: #7cebc4;
+      box-shadow: 0 0 12px rgba(93, 232, 180, 0.4);
+    }
+    .approval-reject {
+      background: var(--v-red);
+      color: #1a0a0a;
+    }
+    .approval-reject:hover {
+      background: #e88888;
+      box-shadow: 0 0 12px rgba(207, 120, 120, 0.4);
+    }
+
+    /* Speaking tag — "• SPEAKING" dot + label */
+    .speaking-tag {
+      font-family: var(--f-display);
+      font-size: 9px; font-weight: 400;
+      letter-spacing: 3px; color: var(--v-cyan-soft);
+      text-shadow: 0 0 8px rgba(110,231,240,0.3);
+      text-align: right; text-transform: uppercase;
+      font-style: italic; opacity: 0.85;
+    }
+    .speaking-dot {
+      display: inline-block; width: 5px; height: 5px;
+      background: var(--v-cyan); border-radius: 50%;
+      margin-right: 7px; vertical-align: middle;
+      box-shadow: 0 0 7px var(--v-glow);
+      animation: speakDot 1.6s ease-in-out infinite;
+    }
+    .speaking-speaking {
+      background: var(--v-green) !important;
+      box-shadow: 0 0 9px rgba(93,232,180,0.65) !important;
+      animation-duration: 0.5s !important;
+    }
+    .speaking-thinking {
+      background: var(--v-amber) !important;
+      box-shadow: 0 0 9px var(--v-amber-soft) !important;
+      animation-duration: 0.8s !important;
+    }
+    @keyframes speakDot {
+      0%,100% { opacity: 0.32; transform: scale(0.78); }
+      50%      { opacity: 1;    transform: scale(1.32); }
+    }
+
+    /* Volume */
+    .volume-row {
+      display: flex; align-items: center;
+      justify-content: flex-end; gap: 14px;
+    }
+    .volume-slider {
+      -webkit-appearance: none; appearance: none;
+      width: 100px; height: 16px;
+      background: transparent; cursor: pointer; outline: none; border: none;
+    }
+    .volume-slider::-webkit-slider-runnable-track {
+      height: 1px;
+      background: rgba(110,231,240,0.2);
+      border-radius: 1px;
+    }
+    .volume-slider::-moz-range-track {
+      height: 1px; background: rgba(110,231,240,0.2); border-radius: 1px;
+    }
+    .volume-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 12px; height: 12px; background: var(--v-cyan);
+      border: none; border-radius: 50%; margin-top: -5.5px;
+      box-shadow: 0 0 10px var(--v-glow);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .volume-slider::-webkit-slider-thumb:hover {
+      transform: scale(1.3); box-shadow: 0 0 18px var(--v-glow);
+    }
+    .volume-slider::-moz-range-thumb {
+      width: 12px; height: 12px; background: var(--v-cyan);
+      border: none; border-radius: 50%; box-shadow: 0 0 10px var(--v-glow);
+    }
+
+    /* Volume % — Orbitron bold bright */
+    .volume-pct {
+      font-family: var(--f-display);
+      font-size: 14px; font-weight: 700; color: var(--v-cyan);
+      min-width: 42px; text-align: right; letter-spacing: 1px;
+      text-shadow: 0 0 10px rgba(110,231,240,0.5);
+    }
+
+    /* MUTE button — bordered box with icon prefix like image */
+    .mute-btn {
+      margin-top: 12px; padding: 6px 14px;
+      font-family: var(--f-display);
+      font-size: 9px; font-weight: 400; letter-spacing: 3px;
+      color: var(--v-cyan-soft); background: transparent;
+      border: 1px solid rgba(110,231,240,0.3); border-radius: 2px;
+      cursor: pointer; transition: all 0.22s;
+      text-transform: uppercase; font-style: italic;
+    }
+    .mute-btn::before { content: "🔊 "; font-style: normal; font-size: 10px; }
+    .mute-btn.muted { color: var(--v-red); border-color: rgba(207,120,120,0.4); }
+    .mute-btn.muted::before { content: "🔇 "; }
+    .mute-btn:hover {
+      color: var(--v-cyan);
+      border-color: rgba(110,231,240,0.5);
+      box-shadow: 0 0 12px rgba(110,231,240,0.12);
+    }
+
+    /* ── Bottom status ── */
+    .bottom-status {
+      position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
+      z-index: 6; text-align: center; pointer-events: none;
+    }
+    .status-text {
+      font-family: var(--f-body);
+      font-size: 12px; font-weight: 600;
+      letter-spacing: 10px; color: var(--v-cyan);
+      text-shadow: 0 0 14px var(--v-glow);
+      animation: statusBreath 2.9s ease-in-out infinite;
+      transition: color 0.42s, text-shadow 0.42s;
+      text-transform: uppercase;
+    }
+    .status-idle    { color: var(--v-cyan-soft); }
+    .status-thinking {
+      color: var(--v-amber);
+      text-shadow: 0 0 12px var(--v-amber-soft);
+      animation-duration: 0.9s;
+    }
+    .status-speaking {
+      color: var(--v-green);
+      text-shadow: 0 0 12px rgba(93,232,180,0.52);
+      animation-duration: 0.62s;
+    }
+    .status-dot {
+      display: inline-block; width: 6px; height: 6px;
+      background: currentColor; border-radius: 50%;
+      margin-right: 14px; vertical-align: middle;
+      box-shadow: 0 0 8px currentColor;
+      animation: dotPulse 1.35s ease-in-out infinite;
+    }
+    .status-hint {
+      display: block;
+      font-family: var(--f-body);
+      font-size: 9px; font-weight: 400; color: var(--v-muted);
+      letter-spacing: 5px; margin-top: 8px; opacity: 0.5;
+      text-transform: uppercase;
+    }
+    @keyframes statusBreath {
+      0%,100% { opacity: 0.68; }
+      50%      { opacity: 1; }
+    }
+    @keyframes dotPulse {
+      0%,100% { transform: scale(1);   opacity: 0.38; }
+      50%      { transform: scale(1.7); opacity: 1; }
+    }
+
+    /* ── Accessibility & responsive ── */
+    @media (prefers-reduced-motion: reduce) {
+      .led-pill.lit, .speaking-dot, .status-dot,
+      .status-text, .core-dot { animation: none !important; }
+    }
+    @media (max-width: 900px) {
+      .overlay {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr auto;
+      }
+      .left-info {
+        padding: 22px 20px;
+        background: transparent;
+      }
+      .right-panel {
+        grid-column: 1; flex-direction: row; flex-wrap: wrap;
+        padding: 16px 20px; gap: 14px;
+        background: transparent;
+      }
+      .panel-section { flex: 1 1 130px; padding: 8px 8px; }
+      .brand-name    { font-size: 32px; letter-spacing: 9px; }
+      .clock-block   { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+    import React, { useEffect, useRef, useState } from 'react';
+    import { createRoot } from 'react-dom/client';
+    import htm from 'htm';
+    const html = htm.bind(React.createElement);
+
+    const STATE_TARGETS = {
+      idle:     { speed: 0.55, expand: 1.00, bloom: 0.55, pulse: 0.18 },
+      thinking: { speed: 1.10, expand: 1.05, bloom: 0.75, pulse: 0.45 },
+      speaking: { speed: 1.85, expand: 1.12, bloom: 0.95, pulse: 0.85 },
+    };
+
+    function VivieUI() {
+      const canvasRef = useRef(null);
+      const stateRef = useRef("idle");
+      const bloomRef = useRef(null);
+      const responseStartRef = useRef(null);
+
+      const [vState, setVState] = useState("idle");
+      const [wsStatus, setWsStatus] = useState("connecting");
+      const [time, setTime] = useState("--:--:--");
+      const [date, setDate] = useState("----.--.--");
+      const [logs, setLogs] = useState([{ ts: "--:--:--", text: "Vivie initializing...", fresh: true }]);
+      const [latency, setLatency] = useState("\u2014");
+      const [confidence, setConfidence] = useState("97.3");
+      const [episodes, setEpisodes] = useState("\u2014");
+      const [knowledge, setKnowledge] = useState("\u2014");
+      const [memPct, setMemPct] = useState(0);
+      const [sessionId, setSessionId] = useState("#--------");
+      const [volume, setVolume] = useState(80);
+      const [muted, setMuted] = useState(false);
+      const [ledLit, setLedLit] = useState(() => new Array(16).fill(false));
+      const [currentTask, setCurrentTask] = useState(null);
+      const [approvalRequest, setApprovalRequest] = useState(null);
+      const [chatInput, setChatInput] = useState("");
+      const [isSending, setIsSending] = useState(false);
+
+      const wsRef = useRef(null);
+      const reconnectTimerRef = useRef(null);
+
+      const setVivieState = (s) => {
+        stateRef.current = s;
+        setVState(s);
+        if (bloomRef.current) bloomRef.current.strength = STATE_TARGETS[s].bloom;
+      };
+
+      const addLog = (text, cls) => {
+        const now = new Date();
+        const p = (n) => String(n).padStart(2, "0");
+        const ts = p(now.getHours()) + ":" + p(now.getMinutes()) + ":" + p(now.getSeconds());
+        setLogs((prev) => {
+          const next = [...prev, { ts, text, cls, fresh: true }];
+          return next.slice(-6);
+        });
+        setTimeout(() => {
+          setLogs((prev) => prev.map((l) => (l.text === text && l.ts === ts ? { ...l, fresh: false } : l)));
+        }, 2000);
+      };
+
+      useEffect(() => {
+        const tick = () => {
+          const now = new Date();
+          const p = (n) => String(n).padStart(2, "0");
+          setTime(p(now.getHours()) + ":" + p(now.getMinutes()) + ":" + p(now.getSeconds()));
+          setDate(now.getFullYear() + "." + p(now.getMonth() + 1) + "." + p(now.getDate()));
+        };
+        tick();
+        const id = setInterval(tick, 1000);
+        return () => clearInterval(id);
+      }, []);
+
+      useEffect(() => {
+        if (vState !== "speaking") {
+          setLedLit(new Array(16).fill(false));
+          return;
+        }
+        const id = setInterval(() => {
+          const active = 7 + Math.floor(Math.random() * 8);
+          const idxs = new Set();
+          while (idxs.size < active) idxs.add(Math.floor(Math.random() * 16));
+          setLedLit(Array.from({ length: 16 }, (_, i) => idxs.has(i)));
+        }, 110);
+        return () => clearInterval(id);
+      }, [vState]);
+
+      useEffect(() => {
+        const WS_URL = "ws://localhost:8765";
+        const connect = () => {
+          let ws;
+          try { ws = new WebSocket(WS_URL); } catch {
+            setWsStatus("disconnected");
+            reconnectTimerRef.current = setTimeout(connect, 2500);
+            return;
+          }
+          wsRef.current = ws;
+          ws.onopen = () => {
+            setWsStatus("connected");
+            addLog("WebSocket connected", "ok");
+            setVivieState("idle");
+          };
+          ws.onclose = () => {
+            setWsStatus("disconnected");
+            reconnectTimerRef.current = setTimeout(connect, 2500);
+          };
+          ws.onerror = () => setWsStatus("disconnected");
+          ws.onmessage = (e) => {
+            try {
+              const msg = JSON.parse(e.data);
+              handleSignal(msg.type, msg.value);
+            } catch {}
+          };
+        };
+        connect();
+        return () => {
+          if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+          wsRef.current?.close();
+        };
+      }, []);
+
+      const sendToVivie = (type, value) => {
+        const ws = wsRef.current;
+        if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type, value }));
+      };
+
+      const handleSendChat = () => {
+        const text = chatInput.trim();
+        if (!text || isSending) return;
+
+        setIsSending(true);
+        sendToVivie("user_message", text);
+        addLog("You: " + text.slice(0, 55), "user");
+        setChatInput("");
+        setVivieState("thinking");
+        responseStartRef.current = Date.now();
+
+        // Reset sending state after a reasonable timeout
+        setTimeout(() => setIsSending(false), 3000);
+      };
+
+      const handleSignal = (type, value) => {
+        switch (type) {
+          case "sig_speaking_state":
+            setVivieState(value === true ? "speaking" : "idle");
+            if (value === true) responseStartRef.current = null;
+            break;
+          case "sig_agent_state": {
+            const v = String(value || "").toLowerCase();
+            if (v.includes("speak")) setVivieState("speaking");
+            else if (v.includes("process") || v.includes("think")) {
+              setVivieState("thinking");
+              responseStartRef.current = Date.now();
+            } else setVivieState("idle");
+            break;
+          }
+          case "sig_listening":
+            if (value === true) setVivieState("idle");
+            break;
+          case "sig_user_message":
+            if (value) {
+              addLog("You: " + String(value).slice(0, 55), "user");
+              responseStartRef.current = Date.now();
+              setVivieState("thinking");
+            }
+            break;
+          case "sig_vivie_message":
+            if (value) {
+              addLog("Vivie: " + String(value).slice(0, 55), "vivie");
+              if (responseStartRef.current) {
+                setLatency(String(Date.now() - responseStartRef.current));
+                responseStartRef.current = null;
+              }
+            }
+            break;
+          case "sig_log":
+            if (value) addLog(String(value).slice(0, 60));
+            break;
+          case "sig_memory_update":
+            if (value && typeof value === "object") {
+              const v = value;
+              const ep = v.episodes || 0;
+              const kn = v.knowledge || 0;
+              setEpisodes(String(ep));
+              setKnowledge(String(kn));
+              setMemPct(Math.min(100, Math.round(ep / 5)));
+            }
+            break;
+          case "sig_latency":
+            if (value != null) setLatency(String(Math.round(Number(value))));
+            break;
+          case "sig_session_id":
+            if (value) {
+              const s = String(value);
+              setSessionId(s.startsWith("#") ? s : "#" + s.toUpperCase().slice(0, 8));
+            }
+            break;
+          case "sig_volume_sync":
+            if (value != null) setVolume(parseInt(String(value)));
+            break;
+          case "sig_confidence":
+            if (value != null) setConfidence(parseFloat(String(value)).toFixed(1));
+            break;
+          case "sig_reasoning":
+            if (Array.isArray(value) && value.length) addLog("Reasoning: " + String(value[0]).slice(0, 45));
+            break;
+          case "sig_task_started":
+            if (value && typeof value === "object") {
+              setCurrentTask({
+                task_id: value.task_id,
+                description: value.description,
+                total_steps: value.total_steps,
+                completed_steps: 0,
+                status: "running",
+                steps: [],
+              });
+              addLog("Task started: " + String(value.description).slice(0, 50), "task");
+            }
+            break;
+          case "sig_step_started":
+            if (value && typeof value === "object" && currentTask) {
+              setCurrentTask(prev => ({
+                ...prev,
+                steps: [...(prev.steps || []), {
+                  step_id: value.step_id,
+                  description: value.description,
+                  action_type: value.action_type,
+                  status: "running",
+                }],
+              }));
+              addLog("Step: " + String(value.description).slice(0, 50), "step");
+            }
+            break;
+          case "sig_step_failed":
+            if (value && typeof value === "object" && currentTask) {
+              setCurrentTask(prev => ({
+                ...prev,
+                steps: (prev.steps || []).map(s =>
+                  s.step_id === value.step_id ? { ...s, status: "failed", error: value.error } : s
+                ),
+              }));
+              addLog("Step failed: " + String(value.error).slice(0, 50), "error");
+            }
+            break;
+          case "sig_task_completed":
+            if (value && typeof value === "object" && currentTask) {
+              setCurrentTask(prev => ({
+                ...prev,
+                status: value.status,
+                completed_steps: value.completed,
+              }));
+              addLog("Task completed: " + value.status + " (" + value.completed + "/" + value.total + ")", "task");
+            }
+            break;
+          case "sig_approval_required":
+            if (value && typeof value === "object") {
+              addLog("Approval required for " + value.steps_requiring_approval.length + " steps", "warning");
+            }
+            break;
+          case "sig_approval_requested":
+            if (value && typeof value === "object") {
+              setApprovalRequest({
+                approval_id: value.approval_id,
+                task_id: value.task_id,
+                action_type: value.action_type,
+                description: value.description,
+                target: value.target,
+                risk: value.risk,
+                arguments_summary: value.arguments_summary,
+              });
+              addLog("Approval requested: " + String(value.description).slice(0, 50), "warning");
+            }
+            break;
+          case "sig_approval_granted":
+            if (value && typeof value === "object") {
+              setApprovalRequest(null);
+              addLog("Approval granted", "ok");
+            }
+            break;
+          case "sig_approval_rejected":
+            if (value && typeof value === "object") {
+              setApprovalRequest(null);
+              addLog("Approval rejected: " + String(value.reason).slice(0, 50), "error");
+            }
+            break;
+        }
+      };
+
+      useEffect(() => {
+        const container = canvasRef.current;
+        if (!container) return;
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 0, 4.5);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setClearColor(0x040608, 1);
+        container.appendChild(renderer.domElement);
+
+        const composer = new EffectComposer(renderer);
+        composer.addPass(new RenderPass(scene, camera));
+        const bloom = new UnrealBloomPass(
+          new THREE.Vector2(window.innerWidth, window.innerHeight),
+          0.55, 0.6, 0.15,
+        );
+        composer.addPass(bloom);
+        bloomRef.current = bloom;
+
+        const group = new THREE.Group();
+        group.scale.setScalar(0.65);
+        scene.add(group);
+
+        
+        const CORE_COUNT = 5500;
+        const corePositions = new Float32Array(CORE_COUNT * 3);
+        const coreSizes = new Float32Array(CORE_COUNT);
+        const coreBright = new Float32Array(CORE_COUNT);
+        const coreSeed = new Float32Array(CORE_COUNT);
+        const coreBaseR = new Float32Array(CORE_COUNT);
+        const coreDir = new Float32Array(CORE_COUNT * 3);
+
+        for (let i = 0; i < CORE_COUNT; i++) {
+          const r = 0.05 + Math.pow(Math.random(), 1.6) * 1.25;
+          const theta = Math.random() * Math.PI * 2;
+          const phi = Math.acos(2 * Math.random() - 1);
+          const sp = Math.sin(phi);
+          const x = sp * Math.cos(theta);
+          const y = Math.cos(phi);
+          const z = sp * Math.sin(theta);
+          coreDir[i * 3] = x;
+          coreDir[i * 3 + 1] = y;
+          coreDir[i * 3 + 2] = z;
+          coreBaseR[i] = r;
+          corePositions[i * 3] = r * x;
+          corePositions[i * 3 + 1] = r * y;
+          corePositions[i * 3 + 2] = r * z;
+          coreSizes[i] = 0.32 + Math.random() * 0.55;
+          coreBright[i] = Math.random() < 0.04 ? 1.5 + Math.random() * 0.5 : 0.5 + Math.random() * 0.45;
+          coreSeed[i] = Math.random() * 100;
+        }
+
+        const coreGeom = new THREE.BufferGeometry();
+        coreGeom.setAttribute("position", new THREE.BufferAttribute(corePositions, 3));
+        coreGeom.setAttribute("aSize", new THREE.BufferAttribute(coreSizes, 1));
+        coreGeom.setAttribute("aBright", new THREE.BufferAttribute(coreBright, 1));
+
+        const coreMat = new THREE.ShaderMaterial({
+          uniforms: {
+            uPixelRatio: { value: Math.min(window.devicePixelRatio, 2) },
+            uThinking: { value: 0 },
+            uSpeaking: { value: 0 },
+            uPulse: { value: 0 },
+          },
+          vertexShader: `
+            attribute float aSize;
+            attribute float aBright;
+            varying float vDist;
+            varying float vBright;
+            uniform float uPixelRatio;
+            void main() {
+              vDist = length(position);
+              vBright = aBright;
+              vec4 mv = modelViewMatrix * vec4(position, 1.0);
+              gl_PointSize = max(aSize * uPixelRatio * (28.0 / -mv.z), 0.5);
+              gl_Position = projectionMatrix * mv;
+            }
+          `,
+          fragmentShader: `
+            varying float vDist;
+            varying float vBright;
+            uniform float uThinking;
+            uniform float uSpeaking;
+            uniform float uPulse;
+            void main() {
+              float d = length(gl_PointCoord - vec2(0.5));
+              if (d > 0.5) discard;
+              float alpha = 1.0 - smoothstep(0.04, 0.46, d);
+              float t = smoothstep(0.0, 1.5, vDist);
+
+              vec3 hot   = vec3(0.92, 0.98, 1.0);
+              vec3 cyan  = vec3(0.18, 0.78, 0.88);
+              vec3 deep  = vec3(0.04, 0.10, 0.28);
+              vec3 amber = vec3(0.95, 0.72, 0.30);
+              vec3 pulseC= vec3(0.55, 0.95, 1.0);
+
+              vec3 col = mix(hot, cyan, smoothstep(0.0, 0.35, t));
+              col = mix(col, deep, smoothstep(0.45, 1.0, t));
+              col = mix(col, amber, uThinking * 0.30);
+              col = mix(col, pulseC, uPulse * (1.0 - t) * 0.6);
+              col *= vBright * (1.0 + uSpeaking * 0.25);
+
+              gl_FragColor = vec4(col, alpha * 0.88);
+            }
+          `,
+          transparent: true,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        });
+        group.add(new THREE.Points(coreGeom, coreMat));
+
+        const PLEX = 520;
+        const plexPositions = new Float32Array(PLEX * 3);
+        const plexSizes = new Float32Array(PLEX);
+        const plexBaseR = new Float32Array(PLEX);
+        const plexTheta = new Float32Array(PLEX);
+        const plexPhi = new Float32Array(PLEX);
+        const plexSpeed = new Float32Array(PLEX);
+
+        for (let i = 0; i < PLEX; i++) {
+          const r = 1.10 + Math.random() * 1.30;
+          const theta = Math.random() * Math.PI * 2;
+          const phi = Math.acos(2 * Math.random() - 1);
+          plexBaseR[i] = r;
+          plexTheta[i] = theta;
+          plexPhi[i] = phi;
+          plexSpeed[i] = (0.05 + Math.random() * 0.14) / (0.3 + r * 0.25);
+          const sp = Math.sin(phi);
+          plexPositions[i * 3] = r * sp * Math.cos(theta);
+          plexPositions[i * 3 + 1] = r * Math.cos(phi);
+          plexPositions[i * 3 + 2] = r * sp * Math.sin(theta);
+          plexSizes[i] = 0.5 + Math.random() * 0.8;
+        }
+
+        const plexGeom = new THREE.BufferGeometry();
+        plexGeom.setAttribute("position", new THREE.BufferAttribute(plexPositions, 3));
+        plexGeom.setAttribute("aSize", new THREE.BufferAttribute(plexSizes, 1));
+        const plexMat = new THREE.ShaderMaterial({
+          uniforms: { uPixelRatio: { value: Math.min(window.devicePixelRatio, 2) } },
+          vertexShader: `
+            attribute float aSize;
+            varying float vDist;
+            uniform float uPixelRatio;
+            void main(){
+              vDist = length(position);
+              vec4 mv = modelViewMatrix * vec4(position, 1.0);
+              gl_PointSize = max(aSize * uPixelRatio * (24.0 / -mv.z), 0.5);
+              gl_Position = projectionMatrix * mv;
+            }
+          `,
+          fragmentShader: `
+            varying float vDist;
+            void main(){
+              float d = length(gl_PointCoord - vec2(0.5));
+              if (d > 0.5) discard;
+              float a = 1.0 - smoothstep(0.06, 0.46, d);
+              float t = smoothstep(0.9, 2.5, vDist);
+              vec3 col = mix(vec3(0.05, 0.45, 0.55), vec3(0.02, 0.06, 0.20), t);
+              gl_FragColor = vec4(col, a * 0.62);
+            }
+          `,
+          transparent: true,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        });
+        group.add(new THREE.Points(plexGeom, plexMat));
+
+        const MAX_LINES = 4800;
+        const linePos = new Float32Array(MAX_LINES * 6);
+        const lineGeom = new THREE.BufferGeometry();
+        lineGeom.setAttribute("position", new THREE.BufferAttribute(linePos, 3));
+        lineGeom.setDrawRange(0, 0);
+        const lineMat = new THREE.LineBasicMaterial({
+          color: 0x4ad4e0,
+          transparent: true,
+          opacity: 0.09,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        });
+        group.add(new THREE.LineSegments(lineGeom, lineMat));
+        const CONN = 0.55;
+        const CONN_SQ = CONN * CONN;
+        const GRID_OFF = 20;
+        const GRID_STRIDE = 41;
+        const grid = new Map();
+        function updateLines() {
+          grid.clear();
+          for (let i = 0; i < PLEX; i++) {
+            const ix = i * 3;
+            const cx = Math.floor(plexPositions[ix] / CONN) + GRID_OFF;
+            const cy = Math.floor(plexPositions[ix + 1] / CONN) + GRID_OFF;
+            const cz = Math.floor(plexPositions[ix + 2] / CONN) + GRID_OFF;
+            const key = (cx * GRID_STRIDE + cy) * GRID_STRIDE + cz;
+            let cell = grid.get(key);
+            if (!cell) { cell = []; grid.set(key, cell); }
+            cell.push(i);
+          }
+          let idx = 0;
+          for (let i = 0; i < PLEX; i++) {
+            if (idx >= MAX_LINES) break;
+            const ix = i * 3;
+            const ax = plexPositions[ix], ay = plexPositions[ix + 1], az = plexPositions[ix + 2];
+            const cx = Math.floor(ax / CONN) + GRID_OFF;
+            const cy = Math.floor(ay / CONN) + GRID_OFF;
+            const cz = Math.floor(az / CONN) + GRID_OFF;
+            for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+              const key = ((cx + dx) * GRID_STRIDE + (cy + dy)) * GRID_STRIDE + (cz + dz);
+              const cell = grid.get(key);
+              if (!cell) continue;
+              for (const j of cell) {
+                if (j <= i || idx >= MAX_LINES) continue;
+                const jx = j * 3;
+                const ddx = ax - plexPositions[jx];
+                const ddy = ay - plexPositions[jx + 1];
+                const ddz = az - plexPositions[jx + 2];
+                if (ddx * ddx + ddy * ddy + ddz * ddz < CONN_SQ) {
+                  const li = idx * 6;
+                  linePos[li] = ax; linePos[li + 1] = ay; linePos[li + 2] = az;
+                  linePos[li + 3] = plexPositions[jx]; linePos[li + 4] = plexPositions[jx + 1]; linePos[li + 5] = plexPositions[jx + 2];
+                  idx++;
+                }
+              }
+            }
+          }
+          lineGeom.setDrawRange(0, idx * 2);
+          lineGeom.attributes.position.needsUpdate = true;
+        }
+
+        let mouseX = 0, mouseY = 0;
+        const onMove = (e) => {
+          mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
+          mouseY = (e.clientY / window.innerHeight - 0.5) * 2;
+        };
+        document.addEventListener("mousemove", onMove);
+
+        const clock = new THREE.Clock();
+        let cSpeed = 0.6, cExpand = 1, cThinking = 0, cSpeaking = 0, cPulse = 0;
+        let nextPulseAt = 0;
+        const pulses = [];
+        let rafId = 0;
+
+        const animate = () => {
+          rafId = requestAnimationFrame(animate);
+          const dt = Math.min(clock.getDelta(), 0.05);
+          const t = clock.getElapsedTime();
+          const state = stateRef.current;
+          const tgt = STATE_TARGETS[state];
+
+          cSpeed += (tgt.speed - cSpeed) * 0.05;
+          cExpand += (tgt.expand - cExpand) * 0.04;
+          cThinking += ((state === "thinking" ? 1 : 0) - cThinking) * 0.06;
+          cSpeaking += ((state === "speaking" ? 1 : 0) - cSpeaking) * 0.08;
+
+          const interval = state === "speaking" ? 0.45 : state === "thinking" ? 0.8 : 1.6;
+          if (t >= nextPulseAt) {
+            pulses.push({ start: t, intensity: tgt.pulse * (0.7 + Math.random() * 0.6) });
+            nextPulseAt = t + interval * (0.7 + Math.random() * 0.6);
+          }
+          let pulseSum = 0;
+          for (let i = pulses.length - 1; i >= 0; i--) {
+            const age = t - pulses[i].start;
+            if (age > 2.5) { pulses.splice(i, 1); continue; }
+            const env = Math.exp(-age * 1.2) * pulses[i].intensity;
+            pulseSum = Math.max(pulseSum, env);
+          }
+          cPulse += (pulseSum - cPulse) * 0.25;
+          coreMat.uniforms.uThinking.value = cThinking;
+          coreMat.uniforms.uSpeaking.value = cSpeaking;
+          coreMat.uniforms.uPulse.value = cPulse;
+
+          const breath = 1.0 + Math.sin(t * 0.55) * 0.025 + Math.sin(t * 0.27) * 0.018;
+
+          for (let i = 0; i < CORE_COUNT; i++) {
+            const ix = i * 3;
+            const baseR = coreBaseR[i];
+            const seed = coreSeed[i];
+
+            const wob =
+              Math.sin(t * 0.9 * cSpeed + seed * 0.7) * 0.025 +
+              Math.sin(t * 1.7 * cSpeed + seed * 1.3) * 0.015 +
+              Math.sin(t * 0.4 + seed * 0.21) * 0.04;
+
+            let pulseR = 0;
+            for (let p = 0; p < pulses.length; p++) {
+              const age = t - pulses[p].start;
+              const waveR = age * 0.85;
+              const dist = Math.abs(baseR - waveR);
+              const w = Math.exp(-dist * dist * 18) * Math.exp(-age * 0.9);
+              pulseR += w * pulses[p].intensity * 0.08;
+            }
+
+            const r = (baseR + wob + pulseR) * cExpand * breath;
+
+            const angle = t * (0.18 + (1 - baseR) * 0.25) * cSpeed * 0.6 + seed * 0.05;
+            const cosA = Math.cos(angle);
+            const sinA = Math.sin(angle);
+            const dx = coreDir[ix];
+            const dy = coreDir[ix + 1];
+            const dz = coreDir[ix + 2];
+            const rx = dx * cosA - dz * sinA;
+            const rz = dx * sinA + dz * cosA;
+            const tilt = Math.sin(t * 0.3 + seed * 0.1) * 0.08;
+            const ry = dy + Math.sin(t * 0.6 + seed) * 0.02;
+
+            corePositions[ix] = r * rx;
+            corePositions[ix + 1] = r * (ry + tilt * 0.05);
+            corePositions[ix + 2] = r * rz;
+          }
+          coreGeom.attributes.position.needsUpdate = true;
+
+          for (let i = 0; i < PLEX; i++) {
+            plexTheta[i] += plexSpeed[i] * dt * (0.5 + cSpeed * 0.5);
+            const w = Math.sin(t * 0.3 + i * 0.15) * 0.08 * (0.5 + cSpeed * 0.5);
+            const p = plexPhi[i] + w;
+            const sp = Math.sin(p);
+            const r = plexBaseR[i] * (1 + cPulse * 0.04) * breath;
+            plexPositions[i * 3] = r * sp * Math.cos(plexTheta[i]);
+            plexPositions[i * 3 + 1] = r * Math.cos(p);
+            plexPositions[i * 3 + 2] = r * sp * Math.sin(plexTheta[i]);
+          }
+          plexGeom.attributes.position.needsUpdate = true;
+          updateLines();
+
+          lineMat.opacity = 0.07 + cSpeaking * 0.08 + cPulse * 0.05;
+          bloom.strength += (tgt.bloom + cPulse * 0.15 - bloom.strength) * 0.06;
+
+          group.rotation.y = t * 0.04;
+          group.rotation.x = Math.sin(t * 0.03) * 0.06;
+
+          camera.position.x += (mouseX * 0.25 - camera.position.x) * 0.03;
+          camera.position.y += (-mouseY * 0.15 - camera.position.y) * 0.03;
+          camera.lookAt(0, 0, 0);
+
+          composer.render();
+        };
+        animate();
+
+        const onResize = () => {
+          const w = window.innerWidth, h = window.innerHeight;
+          camera.aspect = w / h;
+          camera.updateProjectionMatrix();
+          renderer.setSize(w, h);
+          composer.setSize(w, h);
+          const pr = Math.min(window.devicePixelRatio, 2);
+          coreMat.uniforms.uPixelRatio.value = pr;
+          plexMat.uniforms.uPixelRatio.value = pr;
+        };
+        window.addEventListener("resize", onResize);
+
+        return () => {
+          cancelAnimationFrame(rafId);
+          window.removeEventListener("resize", onResize);
+          document.removeEventListener("mousemove", onMove);
+          renderer.dispose();
+          coreGeom.dispose();
+          coreMat.dispose();
+          plexGeom.dispose();
+          plexMat.dispose();
+          lineGeom.dispose();
+          lineMat.dispose();
+          if (renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
+        };
+      }, []);
+
+      const statusLabel =
+        wsStatus !== "connected" ? "VIVIE - CONNECTING"
+        : vState === "speaking" ? "VIVIE - SPEAKING"
+        : vState === "thinking" ? "VIVIE - PROCESSING"
+        : "VIVIE - LISTENING";
+      const coreLabel =
+        vState === "speaking" ? "Neural Core Active"
+        : vState === "thinking" ? "Processing Input"
+        : "Neural Core Online";
+      const audioLabel =
+        vState === "speaking" ? "SPEAKING"
+        : vState === "thinking" ? "PROCESSING"
+        : wsStatus !== "connected" ? "STANDBY"
+        : "LISTENING";
+
+      return html`
+        <div className="vivie-root">
+          <div ref=${canvasRef} className="canvas-container" aria-hidden="true" />
+          <div className="bg-nebula" aria-hidden="true" />
+          <div className="vignette" aria-hidden="true" />
+          <div className="grain" aria-hidden="true" />
+          <div className="scanlines" aria-hidden="true" />
+
+          <div className=${`ws-status ws-${wsStatus}`}>
+            ${wsStatus === "connected" ? "CONNECTED" : wsStatus === "connecting" ? "CONNECTING..." : "RECONNECTING..."}
+          </div>
+
+          <span className="hud-corner hud-tl" aria-hidden="true" />
+          <span className="hud-corner hud-tr" aria-hidden="true" />
+          <span className="hud-corner hud-bl" aria-hidden="true" />
+          <span className="hud-corner hud-br" aria-hidden="true" />
+
+          <div className="overlay">
+            <aside className="left-info">
+              <div className="brand-group">
+                <div className="brand-tag">Neural Voice Assistant</div>
+                <h1 className="brand-name">VIVIE</h1>
+                <div className="brand-sub">v3.2.1 · NEURAL CORE ACTIVE</div>
+              </div>
+              <div className="brand-sep" />
+
+              <div className="core-status-row">
+                <span className=${`core-dot core-${vState}`} />
+                <span className="core-status-text">${coreLabel}</span>
+              </div>
+
+              <div className="metrics-stack">
+                <div className="metric">
+                  <div className="metric-label">Confidence</div>
+                  <div className="metric-value">${confidence}<span className="unit">%</span></div>
+                </div>
+                <div className="metric">
+                  <div className="metric-label">Response Time</div>
+                  <div className="metric-value">${latency}<span className="unit">ms</span></div>
+                </div>
+                <div className="metric">
+                  <div className="metric-label">Episodes</div>
+                  <div className="metric-value">${episodes}</div>
+                </div>
+                <div className="metric">
+                  <div className="metric-label">Knowledge</div>
+                  <div className="metric-value">${knowledge}</div>
+                </div>
+                <div className="metric">
+                  <div className="metric-label">Memory Load</div>
+                  <div className="metric-value">${memPct}<span className="unit">%</span></div>
+                  <div className="bar-track"><div className="bar-fill" style=${{ width: memPct + "%" }} /></div>
+                </div>
+              </div>
+
+              <div className="sub-sep" />
+              <div className="sys-log-header">System Log</div>
+              <div className="sys-log">
+                ${logs.map((l, i) => html`
+                  <div key=${i} className=${`sys-log-line ${l.fresh ? "fresh" : ""} ${l.cls || ""}`}>
+                    <span className="log-ts">${l.ts}</span>${l.text}
+                  </div>
+                `)}
+              </div>
+
+              <div className="clock-block">
+                <div className="clock-time">${time}</div>
+                <div className="clock-date">${date}</div>
+              </div>
+            </aside>
+
+            <aside className="right-panel">
+              <section className="panel-section">
+                <div className="panel-label">Audio Output</div>
+                <div className="led-row">
+                  ${ledLit.map((on, i) => html`
+                    <span
+                      key=${i}
+                      className=${`led-pill ${on ? "lit" : ""}`}
+                      style=${{ animationDuration: (0.18 + (i % 5) * 0.07) + "s" }}
+                    />
+                  `)}
+                </div>
+                <div className="speaking-tag">
+                  <span className=${`speaking-dot speaking-${vState}`} />${audioLabel}
+                </div>
+              </section>
+
+              <section className="panel-section">
+                <div className="panel-label">Volume Control</div>
+                <div className="volume-row">
+                  <input
+                    type="range"
+                    min=${0}
+                    max=${100}
+                    value=${volume}
+                    onChange=${(e) => {
+                      const v = parseInt(e.target.value);
+                      setVolume(v);
+                      sendToVivie("set_volume", v);
+                    }}
+                    className="volume-slider"
+                    aria-label="Volume"
+                  />
+                  <span className="volume-pct">${volume}%</span>
+                </div>
+                <button
+                  className=${`mute-btn ${muted ? "muted" : ""}`}
+                  onClick=${() => {
+                    const next = !muted;
+                    setMuted(next);
+                    sendToVivie("set_mute", next);
+                  }}
+                >
+                  ${muted ? "UNMUTE" : "MUTE"}
+                </button>
+              </section>
+
+              <section className="panel-section">
+                <div className="panel-label">Session</div>
+                <div className="panel-main-value">${sessionId}</div>
+                <div className="panel-sub-value">Secure Channel</div>
+              </section>
+
+              <section className="panel-section">
+                <div className="panel-label">Agent</div>
+                <div className="panel-main-value">VIVIE</div>
+                <div className="panel-sub-value">${wsStatus === "connected" ? "Online" : "Connecting..."}</div>
+              </section>
+            </aside>
+          </div>
+
+          <div className="bottom-status">
+            <div className=${`status-text status-${vState}`}>
+              <span className="status-dot" />${statusLabel}
+            </div>
+            <span className="status-hint">live system</span>
+          </div>
+
+          <!-- Task Progress Panel -->
+          ${currentTask ? html`
+            <div className="task-panel">
+              <div className="task-header">
+                <span className="task-title">Task Progress</span>
+                <span className="task-status task-${currentTask.status}">${currentTask.status.toUpperCase()}</span>
+              </div>
+              <div className="task-description">${currentTask.description}</div>
+              <div className="task-progress-bar">
+                <div
+                  className="task-progress-fill"
+                  style=${{ width: `${(currentTask.completed_steps / currentTask.total_steps) * 100}%` }}
+                />
+              </div>
+              <div className="task-stats">
+                <span>${currentTask.completed_steps} / ${currentTask.total_steps} steps</span>
+              </div>
+              ${currentTask.steps && currentTask.steps.length > 0 ? html`
+                <div className="task-steps">
+                  ${currentTask.steps.map(step => html`
+                    <div key=${step.step_id} className="task-step task-step-${step.status}">
+                      <span className="step-status">${step.status === "running" ? "▶" : step.status === "completed" ? "✓" : step.status === "failed" ? "✗" : "○"}</span>
+                      <span className="step-description">${step.description}</span>
+                      ${step.error ? html`<span className="step-error">${step.error}</span>` : null}
+                    </div>
+                  `)}
+                </div>
+              ` : null}
+            </div>
+          ` : null}
+
+          <!-- Approval Card -->
+          ${approvalRequest ? html`
+            <div className="approval-card">
+              <div className="approval-header">
+                <span className="approval-title">Approval Required</span>
+                <span className="approval-risk approval-risk-${approvalRequest.risk}">${approvalRequest.risk.toUpperCase()}</span>
+              </div>
+              <div className="approval-description">${approvalRequest.description}</div>
+              ${approvalRequest.target ? html`<div className="approval-target">Target: ${approvalRequest.target}</div>` : null}
+              ${approvalRequest.arguments_summary ? html`<div className="approval-args">${approvalRequest.arguments_summary}</div>` : null}
+              <div className="approval-actions">
+                <button
+                  className="approval-btn approval-approve"
+                  onClick=${() => sendToVivie("approve_action", approvalRequest.approval_id)}
+                >
+                  Approve
+                </button>
+                <button
+                  className="approval-btn approval-reject"
+                  onClick=${() => sendToVivie("reject_action", approvalRequest.approval_id)}
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          ` : null}
+
+          <!-- Chat Input Panel -->
+          <div className="chat-panel">
+            <div className="chat-input-row">
+              <input
+                type="text"
+                className="chat-input"
+                placeholder="Type a message to Vivie..."
+                value=${chatInput}
+                onInput=${(e) => setChatInput(e.target.value)}
+                onKeyPress=${(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendChat();
+                  }
+                }}
+                disabled=${isSending}
+              />
+              <button
+                className="chat-send-btn"
+                onClick=${handleSendChat}
+                disabled=${isSending || !chatInput.trim()}
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    const root = createRoot(document.getElementById("root"));
+    root.render(html`<${VivieUI} />`);
+  </script>
+</body>
+</html>

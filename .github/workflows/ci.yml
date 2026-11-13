@@ -1,0 +1,45 @@
+name: Vivie CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg libportaudio2
+
+      - name: Install Python deps (core)
+        run: pip install -r requirements-core.txt
+
+      - name: Run unit tests
+        env:
+          VIVIE_HEADLESS: "1"
+          GROQ_API_KEY: ""
+          MEM0_API_KEY: ""
+        run: |
+          python -m pytest tests/ -q --tb=line
+
+      - name: Validate deps script
+        run: python validate_deps.py || true
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        run: docker build -t vivie:ci .

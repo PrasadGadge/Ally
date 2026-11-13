@@ -1,0 +1,8 @@
+@echo off
+cd /d "%~dp0"
+if exist venv\Scripts\activate.bat (
+    call venv\Scripts\activate.bat
+)
+echo Starting Vivie...
+python Vivie.py
+pause

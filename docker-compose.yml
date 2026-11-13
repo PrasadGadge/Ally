@@ -1,0 +1,27 @@
+# Vivie — local stack
+#   docker compose run test     → run unit tests
+#   docker compose run vivie    → start assistant (needs .env + host audio on Windows/Mac)
+
+services:
+  test:
+    build: .
+    environment:
+      - VIVIE_HEADLESS=1
+    command: >
+      python -m pytest tests/ -q --tb=line
+      --ignore=tests/test_integration.py::TestCoreIntegration::test_imports_dont_crash
+
+  vivie:
+    build: .
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - vivie-data:/root/vivie
+    network_mode: host
+    command: python Vivie.py
+    stdin_open: true
+    tty: true
+
+volumes:
+  vivie-data:

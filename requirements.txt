@@ -1,0 +1,12 @@
+# Vivie — full install (recommended for your dev machine)
+#
+# Minimal install (faster, smaller):
+#   pip install -r requirements-core.txt
+#
+# Add desktop automation + vision + extras:
+#   pip install -r requirements-optional.txt
+#
+# This file installs everything:
+
+-r requirements-core.txt
+-r requirements-optional.txt

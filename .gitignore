@@ -1,0 +1,59 @@
+# ── SECURITY — never commit these ──────────────────
+.env
+*.env
+*.key
+*.pem
+*.p12
+secrets/
+
+# ── Python ─────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ── Virtual environments ────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+
+# ── Data / runtime files ────────────────────────────
+data/*.json
+DATA/*.json
+DATA/dlc/
+vivie_history.txt
+alarm_data.txt
+schedule.txt
+*.log
+logs/
+
+# ── Knowledge / memory DBs ─────────────────────────
+knowledge_core/chroma_db/
+knowledge_core/model_cache/
+memory_core/episodes.json
+*.chroma
+
+# ── TTS cache ──────────────────────────────────────
+tts_cache/
+*.mp3
+
+# ── OS files ───────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE ────────────────────────────────────────────
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ── Images generated ───────────────────────────────
+image_storage/
+capture_image.jpg

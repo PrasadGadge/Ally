@@ -1,0 +1,30 @@
+# Vivie OPTIONAL — desktop automation, vision, search APIs, extra LLM SDKs
+# Install after core: pip install -r requirements-optional.txt
+
+# Web search
+tavily-python>=0.5
+
+# Desktop automation
+PyAutoGUI>=0.9.54
+pywhatkit>=5.4
+selenium>=4.20
+webdriver-manager>=4.0
+
+# Vision
+opencv-python>=4.8
+pillow>=10.0
+
+# Windows volume / notifications (Windows only)
+pycaw>=20240210
+winotify>=1.1.0
+pywin32>=306
+
+# Extra LLM providers (if not using OpenRouter only)
+anthropic>=0.40
+groq>=1.0
+
+# Speed test
+# (uses stdlib + requests — no extra pkg)
+
+# Heavy ML (only if local embeddings fail without it — often pulled by sentence-transformers)
+torch>=2.0

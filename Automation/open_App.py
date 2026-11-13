@@ -1,0 +1,79 @@
+import subprocess
+import time
+import platform
+
+try:
+    import pyautogui as gui
+    _HAS_PYAUTOGUI = True
+except Exception:
+    gui = None
+    _HAS_PYAUTOGUI = False
+
+
+# ==============================
+# 🔐 WHITELISTED APPLICATION MAP
+# ==============================
+
+APP_MAP = {
+    "chrome": "chrome",
+    "google": "chrome",
+    "youtube": "start chrome https://www.youtube.com",
+    "spotify": "spotify",
+    "notepad": "notepad",
+    "calculator": "calc",
+    "cmd": "cmd",
+    "paint": "mspaint",
+    "settings": "start ms-settings:",
+    "explorer": "explorer",
+}
+
+
+# ==============================
+# 🧠 MAIN OPEN FUNCTION
+# ==============================
+
+def open_App(app_name: str) -> bool:
+    app_name = app_name.lower().strip()
+
+    if app_name not in APP_MAP:
+        print(f"[SECURITY] Blocked unknown app request: {app_name}")
+        return False
+
+    command = APP_MAP[app_name]
+
+    # Try Method 1: Direct system execution
+    # SECURITY: Use shell=False when possible to prevent injection
+    try:
+        if " " in command:
+            # Commands with arguments (like URLs) need shell=True on Windows
+            # But we validate the command is from our whitelist first
+            subprocess.run(command, shell=True, check=True)
+        else:
+            # Simple commands can use shell=False for better security
+            subprocess.run(command, shell=False, check=True)
+        print(f"[SUCCESS] Opened {app_name} using subprocess.")
+        return True
+
+    except Exception:
+        print(f"[WARNING] Subprocess failed. Trying GUI fallback...")
+
+        if not _HAS_PYAUTOGUI or platform.system() != "Windows":
+            print("[WARNING] GUI fallback unavailable on this platform.")
+            return False
+
+        # Try Method 2: Windows search fallback
+        try:
+            gui.press("win")
+            time.sleep(0.7)
+
+            gui.write(app_name, interval=0.05)
+            time.sleep(0.7)
+
+            gui.press("enter")
+
+            print(f"[SUCCESS] Opened {app_name} using GUI fallback.")
+            return True
+
+        except Exception as e:
+            print(f"[ERROR] Failed to open {app_name}: {e}")
+            return False
