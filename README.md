@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Vivie — Personal AI Assistant
 
 Voice-first personal assistant with Web UI, memory (mem0 + Chroma), tool routing, and desktop automation.
@@ -75,3 +76,6 @@ python -m pytest tests/ -q
 ## License
 
 Personal project — use and modify for learning.
+=======
+# Ally
+>>>>>>> 82d99ce048be304fa0432bb9abec4c81c26566d1
